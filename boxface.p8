@@ -5,12 +5,57 @@ __lua__
 actors={}
 player={}
 baddie={}
-g=
+cam={}
+globals=
 {
 	grav=0.2, -- gravity per frame
-	camx=0,
-	mapwidth=64,
+	debug=true,
 }
+
+_min_mem = 9999
+_max_mem = 0
+
+function draw_debug()
+  local _cpu = stat(1)
+  local _mem = stat(0)
+  local _cpu_c = 11
+  local _mem_c = 11
+
+  if (_mem < _min_mem) _min_mem = _mem
+  if (_mem > _max_mem) _max_mem = _mem
+
+  if (_cpu > 0.8) _cpu_c = 8
+  if (_mem > 250) _mem_c = 8
+
+  print("cpu ".._cpu,0,8,_cpu_c)
+  print("mem ".._mem,0,16,_mem_c)
+  print("mem min ".._min_mem,0,24,11)
+  print("mem max ".._max_mem,0,32,11)
+end
+
+function cam:new(mapwidth)
+	local o={}
+	setmetatable(o, self)
+	self.__index=self
+	o.x=0
+	o.mapwidth=mapwidth
+	return o
+end
+
+function cam:followplayer(playerx)
+	self.x=playerx-64.0
+	if(self.x<0)self.x=0
+	if(self.x>(self.mapwidth-16)*8)self.x=(self.mapwidth-16)*8
+	camera(self.x,0)
+end
+
+function cam:getx()
+	return self.x
+end
+
+function cam:reset()
+	camera()
+end
 
 function baddie:new(x,y)
 	local o={}
@@ -57,7 +102,7 @@ function player:new(x,y)
 	o.isgrounded=false
 	o.jumpvel=2
 	o.isfaceright=true
-	o.ct=0 --jump button timer
+	o.jumptimer=0 --jump button timer
 	o.jumppressed=false --prevent double jumps
 	o.score=0
 	o.bounce=false --do we turn around at a wall?
@@ -67,21 +112,21 @@ end
 
 function player:jump()
 	self.dy=-self.jumpvel
-	self.ct+=1
+	self.jumptimer+=1
 	sfx(000)
 end
 
-function player:extjump()
+function player:extendjump()
 	self.dy=-self.jumpvel
-	self.ct+=1
+	self.jumptimer+=1
 end
 
-function player:movelft()
+function player:moveleft()
 	self.isfaceright = false
 	self.dx=-2
 end
 
-function player:movergt()
+function player:moveright()
 	self.isfaceright = true
 	self.dx=2
 end
@@ -93,24 +138,24 @@ function player:move()
 	--if player is on the ground start a jump
 	if btn(4)
 	 and self.isgrounded
-	 and self.ct==0 then
+	 and self.jumptimer==0 then
 		self:jump()
 		self.jumppressed = true
 	--if holding down make jump higher
 	elseif btn(4)
-		and self.ct<10
+		and self.jumptimer<10
 		and self.jumppressed then
-		self:extjump()
+		self:extendjump()
 	elseif not btn(4) then
 		self.jumppressed = false
 	end
 
 	self.dx=0
 	if btn(0) then --left
-		self:movelft()
+		self:moveleft()
 	end
 	if btn(1) then --right
-		self:movergt()
+		self:moveright()
 	end
 	updloc(self)
 end
@@ -136,131 +181,132 @@ function player:draw()
 	end
 end
 
+function player:getx()
+	return self.x
+end
+
 function player:printscore()
 	print("score: "..self.score,0,2,1)
 end
 
-function updloc(o)
+function updloc(actor)
 	--moveleft/right
-	o.x+=o.dx
+	actor.x+=actor.dx
 	--accumulate gravity
-	o.dy+=g.grav
+	actor.dy+=globals.grav
 	--fall
-	o.y+=o.dy
+	actor.y+=actor.dy
 end
 
--- object, starting frame, number of frames, animation speed, flip
-function anim(o,sf,nf,sp,fl)
-  if(not o.a_ct) o.a_ct=0
-  if(not o.a_st) o.a_st=0
-
-  o.a_ct+=1
-
-  if(o.a_ct%(30/sp)==0) then
-    o.a_st+=1
-    if(o.a_st==nf) o.a_st=0
+-- object, starting frame, number of frames,
+-- animation speed, flip
+function anim(actor,sf,nf,sp,fl)
+  if(not actor.a_ct) actor.a_ct=0
+  if(not actor.a_st) actor.a_st=0
+  actor.a_ct+=1
+  if(actor.a_ct%(30/sp)==0) then
+    actor.a_st+=1
+    if(actor.a_st==nf) actor.a_st=0
   end
-
-  o.a_fr=sf+o.a_st
-  spr(o.a_fr,o.x,o.y,1,1,fl)
+  actor.a_fr=sf+actor.a_st
+  spr(actor.a_fr,actor.x,actor.y,1,1,fl)
 end
 
-function coll(o)
+function checkwallcollision(actor)
 	--check for walls in the
 	--direction we are moving.
 	local xoffset=0
-	if o.dx>0 then xoffset=7 end
+	if actor.dx>0 then xoffset=7 end
 
 	--look for a wall
-	local h=mget((o.x+xoffset)/8,(o.y+7)/8)
+	local h=mget((actor.x+xoffset)/8,(actor.y+7)/8)
 	if fget(h,0) then
-		o.x=o.startx
+		actor.x=actor.startx
 		-- turn bouncers around
-		if o.bounce then
-			local h2=mget((o.x-xoffset)/8,(o.y+7)/8)
+		if actor.bounce then
+			local h2=mget((actor.x-xoffset)/8,(actor.y+7)/8)
 			if not fget(h2,0) then
-				if o.isfaceright then
-					o.isfaceright = false
+				if actor.isfaceright then
+					actor.isfaceright = false
 				else
-					o.isfaceright = true
+					actor.isfaceright = true
 				end
 			end
 		end
-	elseif fget(h,1) and not o.bad then
-		o.score+=1
-		mset((o.x+xoffset)/8,(o.y+7)/8,000)
+	elseif fget(h,1) and not actor.bad then
+		actor.score+=1
+		mset((actor.x+xoffset)/8,(actor.y+7)/8,000)
 	end
 
-	--check bottom corners of player
-	local v1=mget((o.x)/8,(o.y+8)/8)
-	local v2=mget((o.x+7)/8,(o.y+8)/8)
+	--check bottom corners of object
+	local vertex1=mget((actor.x)/8,(actor.y+8)/8)
+	local vertex2=mget((actor.x+7)/8,(actor.y+8)/8)
 
 	--assume they are floating
 	--until we determine otherwise
-	o.isgrounded=false
+	actor.isgrounded=false
 
 	--only check for floors when
 	--moving downward
-	if o.dy>=0 then
+	if actor.dy>=0 then
 		--look for a solid tile
-		if fget(v1,0) or fget(v2,0) then
+		if fget(vertex1,0) or fget(vertex2,0) then
 			--place o on top of tile
-			o.y = flr((o.y)/8)*8
+			actor.y = flr((actor.y)/8)*8
 			--halt velocity
-			o.dy = 0
+			actor.dy = 0
 			--allow jumping again
-			o.isgrounded=true
-			o.ct=0
+			actor.isgrounded=true
+			actor.jumptimer=0
 		end
 	end
 
 	--hit ceiling
 	--check corners
-	v1=mget((o.x)/8,(o.y)/8)
-	v2=mget((o.x+7)/8,(o.y)/8)
+	vertex1=mget((actor.x)/8,(actor.y)/8)
+	vertex2=mget((actor.x+7)/8,(actor.y)/8)
 
 	--only check for ceilings when
 	--moving up
-	if o.dy<=0 then
+	if actor.dy<=0 then
 		--look for solid tile
-		if fget(v1,0) or fget(v2,0) then
+		if fget(vertex1,0) or fget(vertex2,0) then
 			--position p1 right below
 			--ceiling
-			o.y = flr((o.y+8)/8)*8
+			actor.y = flr((actor.y+8)/8)*8
 			--halt upward velocity
-			o.dy = 0
+			actor.dy = 0
 		end
 	end
 end
 
 function _init()
-	p1 = player:new(32,72)
-	add(actors,p1)
-	b1 = baddie:new(72,32)
-	add(actors,b1)
+	mycam = cam:new(64)
+	player1 = player:new(32,72)
+	add(actors,player1)
+	bad1 = baddie:new(72,32)
+	add(actors,bad1)
 end
 
 function _update()
-	p1:move()
-	coll(p1)
-	b1:move()
-	coll(b1)
+	player1:move()
+	checkwallcollision(player1)
+	bad1:move()
+	checkwallcollision(bad1)
 end
 
 function _draw()
 	cls() --clear the screen
 	map(0,16,0,0,16,16)
-	g.camx=p1.x-64.0
-	if(g.camx<0)g.camx=0
-	if(g.camx>(g.mapwidth-16)*8)g.camx=(g.mapwidth-16)*8
-	camera(g.camx,0)
-	map(16,16,g.camx/1.5,16,128,8)
-	map(16,24,g.camx/2,64,38,8)
+	mycam:followplayer(player1:getx())
+	map(16,16,mycam:getx()/1.5,16,128,8)
+	map(16,24,mycam:getx()/2,64,38,8)
 	map(0,0,0,0,256,128)
-	b1:draw()
-	p1:draw()
-	camera()
-	p1:printscore()
+	bad1:draw()
+	player1:draw()
+	mycam:reset()
+	player1:printscore()
+	if(globals.debug) draw_debug()
 end
 __gfx__
 0000000000000000000000000000000003bbbbbb0000000000000900000000000000040000000000000000000000000000000000000000000000000000000000
@@ -557,3 +603,4 @@ __music__
 00 41424344
 00 41424344
 00 41424344
+
