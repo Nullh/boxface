@@ -10,6 +10,7 @@ globals=
 {
 	grav=0.2, -- gravity per frame
 	debug=true,
+	test=false,
 }
 
 _min_mem = 9999
@@ -31,6 +32,8 @@ function draw_debug()
   print("mem ".._mem,0,16,_mem_c)
   print("mem min ".._min_mem,0,24,11)
   print("mem max ".._max_mem,0,32,11)
+	--print("Player: "..player1.x..","..player1.y,0,40)
+	--print("Enemy: "..bad1.x..","..bad1.y,0,48)
 end
 
 function cam:new(mapwidth)
@@ -198,6 +201,26 @@ function updloc(actor)
 	actor.y+=actor.dy
 end
 
+function player:collide(actor)
+	if actorcollide(self,actor) then
+		globals.test = true
+	else
+		globals.test = false
+	end
+end
+
+function intersect(min1, max1, min2, max2)
+  return max(min1,max1) > min(min2,max2) and
+         min(min1,max1) < max(min2,max2)
+end
+
+function actorcollide(actor1,actor2)
+	return intersect(actor1.x, actor1.x+8,
+		actor2.x, actor2.x+8) and
+	intersect(actor1.y, actor1.y+8,
+		actor2.y, actor2.y+8)
+end
+
 -- object, starting frame, number of frames,
 -- animation speed, flip
 function anim(actor,sf,nf,sp,fl)
@@ -293,6 +316,7 @@ function _update()
 	checkwallcollision(player1)
 	bad1:move()
 	checkwallcollision(bad1)
+	player1:collide(bad1)
 end
 
 function _draw()
@@ -305,7 +329,8 @@ function _draw()
 	bad1:draw()
 	player1:draw()
 	mycam:reset()
-	player1:printscore()
+	--player1:printscore()
+	print(globals.test,0,0)
 	if(globals.debug) draw_debug()
 end
 __gfx__
@@ -603,4 +628,3 @@ __music__
 00 41424344
 00 41424344
 00 41424344
-
