@@ -94,6 +94,9 @@ function baddie:move()
 	updloc(self)
 end
 
+function baddie:update()
+end
+
 function player:new(x,y)
 	local o={}
 	setmetatable(o, self)
@@ -110,7 +113,16 @@ function player:new(x,y)
 	o.score=0
 	o.bounce=false --do we turn around at a wall?
 	o.bad=false
+	o.lives=3
+	o.invuln=false
+	o.invtimer=0
 	return o
+end
+
+function player:drawlives()
+	for i=1, self.lives do
+		spr(001,128-(10*i),0)
+	end
 end
 
 function player:jump()
@@ -202,10 +214,18 @@ function updloc(actor)
 end
 
 function player:collide(actor)
-	if actorcollide(self,actor) then
-		globals.test = true
-	else
-		globals.test = false
+	if actorcollide(self,actor)
+		and not self.invuln then
+		self.lives-=1
+		self.invuln=true
+		self.invtimer=100
+	end
+end
+
+function player:update()
+	self.invtimer-=1
+	if self.invtimer <= 0 then
+		self.invuln = false
 	end
 end
 
@@ -313,6 +333,7 @@ end
 
 function _update()
 	player1:move()
+	player1:update()
 	checkwallcollision(player1)
 	bad1:move()
 	checkwallcollision(bad1)
@@ -330,7 +351,8 @@ function _draw()
 	player1:draw()
 	mycam:reset()
 	--player1:printscore()
-	print(globals.test,0,0)
+	--print(globals.test,0,0)
+	player1:drawlives()
 	if(globals.debug) draw_debug()
 end
 __gfx__
